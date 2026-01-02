@@ -40,13 +40,7 @@ Send a POST request to `/api/generate-qr` with JSON data:
 
 **Example request:**
 ```bash
-curl -X POST http://localhost:5000/api/generate-qr \
-  -H "Content-Type: application/json" \
-  -d '{
-    "value": "100.50",
-    "additional_information": "Donation for church renovation"
-  }' \
-  --output qr-bill.svg
+curl -X 'POST' 'http://localhost:5000/api/generate-qr' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{"value": "56.70","additional_information": "Kerzenziehen 1234"}' --output qr-bill.svg
 ```
 
 The QR bill will be generated with the predefined account information for Viva Kirche Schweiz.

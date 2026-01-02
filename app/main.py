@@ -18,7 +18,7 @@ api = Api(app, version='1.0', title='QR Bill Generator API',
 # Model for QR generation request
 qr_request_model = api.model('QRRequest', {
     'value': fields.String(required=False, description='Payment amount', default='56.70'),
-    'additional_information': fields.String(required=False, description='Reference/additional information', default='Kerzenzeihen 1234')
+    'additional_information': fields.String(required=False, description='Reference/additional information', default='Kerzenziehen 1234')
 })
 
 @app.route('/health')
@@ -61,8 +61,15 @@ class GenerateQR(Resource):
             svg_data = svg_buffer.getvalue()
             svg_buffer.close()
             
-            # Return as SVG
-            return svg_data, 200, {'Content-Type': 'image/svg+xml'}
+            # Return as SVG file using send_file to avoid escaping
+            svg_bytes = io.BytesIO(svg_data.encode('utf-8'))
+            svg_bytes.seek(0)
+            return send_file(
+                svg_bytes,
+                mimetype='image/svg+xml',
+                as_attachment=False,
+                download_name='qr-bill.svg'
+            )
             
         except Exception as e:
             api.abort(500, str(e))
