@@ -24,25 +24,11 @@ docker compose up --build
 
 - `GET /` - Swagger API documentation
 - `GET /health` - Health check endpoint
-- `POST /api/generate-qr` - Generate Swiss QR Bill as SVG image
 - `POST /api/generate-receipt` - Generate receipt as SVG image
 
 ### API Documentation
 
 Interactive Swagger documentation is available at `http://localhost:5000/`
-
-### QR Code Generation
-
-Send a POST request to `/api/generate-qr` with JSON data:
-
-**Fields:**
-- `value` (optional) - Payment amount (default: "56.70")
-- `additional_information` (optional) - Reference/additional information (default: "Kerzenziehen 1234")
-
-**Example request:**
-```bash
-curl -X 'POST' 'http://localhost:5000/api/generate-qr' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{"value": "56.70","additional_information": "Kerzenziehen 1234"}' --output qr-bill.svg
-```
 
 ### Receipt Generation
 
@@ -50,14 +36,23 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 
 **Fields:**
 - `value` (optional) - Payment amount (default: "56.70")
-- `additional_information` (optional) - Reference/additional information (default: "Kerzenziehen 1234")
+- `booking_id` (optional) - Reference/additional information (default: "Kerzenziehen 1234")
+- `teacher` (optional) - Teacher name (default: "")
+- `class` (optional) - Class name (default: "")
+- `payment_type` (optional) - Payment type: "bar", "Twint", or "Einzahlungsschein" (default: "bar")
 
 **Example request:**
 ```bash
-curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{"value": "56.70","additional_information": "Kerzenziehen 1234"}' --output receipt.svg
+curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{
+  "value": "56.70",
+  "booking_id": "1234",
+  "teacher": "Frau Meier",
+  "class": "Oberstufe Usterwest 3A",
+  "payment_type": "bar"
+}' --output receipt.svg
 ```
 
-The QR bill and receipt will be generated with the predefined account information for Viva Kirche Schweiz.
+The receipt will be generated with the predefined account information for Viva Kirche Schweiz.
 
 ## Access
 
