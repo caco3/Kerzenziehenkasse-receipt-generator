@@ -9,4 +9,4 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
-      - ./receipt.odt:/receipt.odt
+      - ./templates:/templates

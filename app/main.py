@@ -85,7 +85,7 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
     
     # Create temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
-        odt_template_path = os.path.join(os.path.dirname(__file__), '/../receipt.odt')
+        odt_template_path = '/templates/receipt.odt'
         
         # Extract ODT template
         with zipfile.ZipFile(odt_template_path, 'r') as template_zip:
