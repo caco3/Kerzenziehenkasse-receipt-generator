@@ -45,7 +45,7 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 **Output Types:**
 - `svg` - Generate QR Bill as SVG image ✅
 - `odt` - Generate receipt as ODT document with QR bill and filled placeholders ✅
-- `pdf` - Generate receipt as PDF document (not implemented yet)
+- `pdf` - Generate receipt as PDF document with QR bill and filled placeholders ✅
 
 **Example request:**
 ```bash

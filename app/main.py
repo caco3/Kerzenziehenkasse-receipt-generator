@@ -5,6 +5,7 @@ import tempfile
 import os
 import xml.etree.ElementTree as ET
 from datetime import datetime
+import subprocess
 from flask_restx import Api, Resource, fields
 from qrbill import QRBill
 
@@ -14,6 +15,42 @@ name = "Viva Kirche Schweiz"
 street = "Kirche Neuwies Uster"
 postal_code = 4126
 city = "Bettingen"
+
+def convert_odt_to_pdf(odt_buffer):
+    """Convert ODT buffer to PDF using LibreOffice"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save ODT buffer to temporary file
+        odt_path = os.path.join(temp_dir, 'receipt.odt')
+        with open(odt_path, 'wb') as f:
+            f.write(odt_buffer.getvalue())
+        
+        # Convert to PDF using LibreOffice
+        try:
+            result = subprocess.run([
+                'libreoffice',
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', temp_dir,
+                odt_path
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                raise Exception(f"LibreOffice conversion failed: {result.stderr}")
+            
+            # Read the generated PDF
+            pdf_path = os.path.join(temp_dir, 'receipt.pdf')
+            if os.path.exists(pdf_path):
+                with open(pdf_path, 'rb') as f:
+                    pdf_buffer = io.BytesIO(f.read())
+                pdf_buffer.seek(0)
+                return pdf_buffer
+            else:
+                raise Exception("PDF file was not generated")
+                
+        except subprocess.TimeoutExpired:
+            raise Exception("LibreOffice conversion timed out")
+        except Exception as e:
+            raise Exception(f"Error converting ODT to PDF: {str(e)}")
 
 def process_odt_template(booking_id, teacher, class_name, value, payment_type):
     """Process ODT template by replacing placeholders and QR code"""
@@ -190,8 +227,15 @@ class GenerateReceipt(Resource):
                 )
                 
             elif output_type == 'pdf':
-                # TODO: Implement PDF generation
-                api.abort(501, "PDF receipt generation not implemented yet")
+                # Generate PDF receipt by converting ODT
+                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+                pdf_buffer = convert_odt_to_pdf(odt_buffer)
+                return send_file(
+                    pdf_buffer,
+                    mimetype='application/pdf',
+                    as_attachment=False,
+                    download_name='receipt.pdf'
+                )
                 
             else:
                 api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf")
