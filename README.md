@@ -44,19 +44,25 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 
 **Output Types:**
 - `svg` - Generate QR Bill as SVG image ✅
-- `odt` - Generate receipt as ODT document (not implemented yet)
+- `odt` - Generate receipt as ODT document with QR bill and filled placeholders ✅
 - `pdf` - Generate receipt as PDF document (not implemented yet)
 
 **Example request:**
 ```bash
+# Select expected output type
+OUTPUT_TYPE="pdf"
+#OUTPUT_TYPE="odt"
+#OUTPUT_TYPE="svg"
+
+# Generate
 curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{
   "value": 56.70,
   "booking_id": 1234,
   "teacher": "Frau Meier",
   "class": "Oberstufe Usterwest 3A",
   "payment_type": "bar",
-  "output_type": "svg"
-}' --output receipt.svg
+  "output_type": "$OUTPUT_TYPE"
+}' --output my-receipt.svg
 ```
 
 The receipt will be generated with the predefined account information for Viva Kirche Schweiz.

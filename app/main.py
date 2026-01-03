@@ -1,5 +1,10 @@
 from flask import Flask, jsonify, request, send_file
 import io
+import zipfile
+import tempfile
+import os
+import xml.etree.ElementTree as ET
+from datetime import datetime
 from flask_restx import Api, Resource, fields
 from qrbill import QRBill
 
@@ -9,6 +14,89 @@ name = "Viva Kirche Schweiz"
 street = "Kirche Neuwies Uster"
 postal_code = 4126
 city = "Bettingen"
+
+def process_odt_template(booking_id, teacher, class_name, value, payment_type):
+    """Process ODT template by replacing placeholders and QR code"""
+    # Get current date and time
+    now = datetime.now()
+    current_year = now.year
+    current_time = now.strftime("%H:%M")
+    current_date = now.strftime("%d.%m.%Y")
+    
+    # Generate QR Bill SVG
+    additional_info = "Kerzenziehen " + str(booking_id)
+    bill = QRBill(
+        account=iban,
+        creditor={
+            'name': name,
+            'street': street,
+            'pcode': str(postal_code),
+            'city': city,
+            'country': 'CH'
+        },
+        amount=str(value),
+        currency='CHF',
+        additional_information=additional_info,
+        language='de'
+    )
+    
+    # Generate SVG to string
+    svg_buffer = io.StringIO()
+    bill.as_svg(svg_buffer)
+    svg_data = svg_buffer.getvalue()
+    svg_buffer.close()
+    
+    # Create temporary directory for processing
+    with tempfile.TemporaryDirectory() as temp_dir:
+        odt_template_path = os.path.join(os.path.dirname(__file__), 'receipt.odt')
+        
+        # Extract ODT template
+        with zipfile.ZipFile(odt_template_path, 'r') as template_zip:
+            template_zip.extractall(temp_dir)
+        
+        # Replace SVG file in Pictures folder
+        pictures_dir = os.path.join(temp_dir, 'Pictures')
+        svg_files = [f for f in os.listdir(pictures_dir) if f.endswith('.svg')]
+        if svg_files:
+            svg_path = os.path.join(pictures_dir, svg_files[0])
+            with open(svg_path, 'w', encoding='utf-8') as f:
+                f.write(svg_data)
+        
+        # Replace placeholders in content.xml
+        content_xml_path = os.path.join(temp_dir, 'content.xml')
+        with open(content_xml_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Replace all placeholders
+        replacements = {
+            '{year}': str(current_year),
+            '{time}': current_time,
+            '{date}': current_date,
+            '{bookingId}': str(booking_id),
+            '{class}': class_name,
+            '{teacher}': teacher,
+            '{priceTotal}': f"{value:.2f}"
+        }
+        
+        for placeholder, replacement in replacements.items():
+            content = content.replace(placeholder, replacement)
+        
+        # Write updated content.xml
+        with open(content_xml_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        # Create new ODT file in memory
+        odt_buffer = io.BytesIO()
+        with zipfile.ZipFile(odt_buffer, 'w', zipfile.ZIP_DEFLATED) as new_odt:
+            # Add all files from temp directory
+            for root, dirs, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_path = os.path.relpath(file_path, temp_dir)
+                    new_odt.write(file_path, arc_path)
+        
+        odt_buffer.seek(0)
+        return odt_buffer
 
 app = Flask(__name__)
 api = Api(app, version='1.0', title='QR Bill Generator API',
@@ -84,8 +172,14 @@ class GenerateReceipt(Resource):
                 )
                 
             elif output_type == 'odt':
-                # TODO: Implement ODT generation
-                api.abort(501, "ODT receipt generation not implemented yet")
+                # Generate ODT receipt
+                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+                return send_file(
+                    odt_buffer,
+                    mimetype='application/vnd.oasis.opendocument.text',
+                    as_attachment=False,
+                    download_name='receipt.odt'
+                )
                 
             elif output_type == 'pdf':
                 # TODO: Implement PDF generation
