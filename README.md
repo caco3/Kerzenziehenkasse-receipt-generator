@@ -24,7 +24,7 @@ docker compose up --build
 
 - `GET /` - Swagger API documentation
 - `GET /health` - Health check endpoint
-- `POST /api/generate-receipt` - Generate receipt as SVG image
+- `POST /api/generate-receipt` - Generate receipt based on output type
 
 ### API Documentation
 
@@ -34,21 +34,28 @@ Interactive Swagger documentation is available at `http://localhost:5000/`
 
 Send a POST request to `/api/generate-receipt` with JSON data:
 
-**Fields:**
-- `value` (optional) - Payment amount (default: "56.70")
-- `booking_id` (optional) - Reference/additional information (default: "Kerzenziehen 1234")
-- `teacher` (optional) - Teacher name (default: "")
-- `class` (optional) - Class name (default: "")
-- `payment_type` (optional) - Payment type: "bar", "Twint", or "Einzahlungsschein" (default: "bar")
+**Required Fields:**
+- `value` (required) - Payment amount (float)
+- `booking_id` (required) - Reference/additional information (integer)
+- `teacher` (required) - Teacher name (string)
+- `class` (required) - Class name (string)
+- `payment_type` (required) - Payment type: "bar", "Twint", or "Einzahlungsschein" (string)
+- `output_type` (required) - Output type: "svg", "odt", or "pdf" (string)
+
+**Output Types:**
+- `svg` - Generate QR Bill as SVG image ✅
+- `odt` - Generate receipt as ODT document (not implemented yet)
+- `pdf` - Generate receipt as PDF document (not implemented yet)
 
 **Example request:**
 ```bash
 curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{
-  "value": "56.70",
-  "booking_id": "1234",
+  "value": 56.70,
+  "booking_id": 1234,
   "teacher": "Frau Meier",
   "class": "Oberstufe Usterwest 3A",
-  "payment_type": "bar"
+  "payment_type": "bar",
+  "output_type": "svg"
 }' --output receipt.svg
 ```
 
