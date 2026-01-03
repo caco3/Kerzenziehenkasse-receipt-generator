@@ -5,6 +5,7 @@ WORKDIR /app
 # Install LibreOffice for PDF conversion
 RUN apt-get update && apt-get install -y \
     libreoffice \
+    cups-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

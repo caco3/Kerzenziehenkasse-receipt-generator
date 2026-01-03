@@ -49,20 +49,35 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 
 **Example request:**
 ```bash
-# Select expected output type
+# Generate and get file
 OUTPUT_TYPE="pdf"
 #OUTPUT_TYPE="odt"
 #OUTPUT_TYPE="svg"
-
-# Generate
 curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d '{
   "value": 56.70,
   "booking_id": 1234,
   "teacher": "Frau Meier",
   "class": "Oberstufe Usterwest 3A",
   "payment_type": "bar",
-  "output_type": "$OUTPUT_TYPE"
+  "output_type": "$OUTPUT_TYPE",
+  "printer_name": "$PRINTER_QUEUE_NAME",
+  "copies": 1
 }' --output my-receipt.svg
+
+# Print
+PRINTER_QUEUE_NAME=`lpstat -v | grep usb | awk -F ' ' '{print $3}' | sed "s/://"`
+curl -X POST 'http://localhost:5000/api/generate-receipt' \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"value\": 56.70,
+    \"booking_id\": 1234,
+    \"teacher\": \"Frau Meier\",
+    \"class\": \"Oberstufe Usterwest 3A\",
+    \"payment_type\": \"EZS\",
+    \"output_type\": \"print\",
+    \"printer_name\": \"$PRINTER_QUEUE_NAME\",
+    \"copies\": 1
+  }"
 ```
 
 The receipt will be generated with the predefined account information for Viva Kirche Schweiz.

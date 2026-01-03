@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   webserver:
     build: .
@@ -10,3 +8,4 @@ services:
     volumes:
       - ./app:/app
       - ./templates:/templates
+      - /run/cups/cups.sock:/run/cups/cups.sock

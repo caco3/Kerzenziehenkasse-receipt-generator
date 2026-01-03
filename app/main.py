@@ -52,6 +52,31 @@ def convert_odt_to_pdf(odt_buffer):
         except Exception as e:
             raise Exception(f"Error converting ODT to PDF: {str(e)}")
 
+def print_pdf_via_cups(pdf_buffer, printer_name=None, copies=1):
+    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+        tmp.write(pdf_buffer.getvalue())
+        tmp_path = tmp.name
+
+    try:
+        cmd = ['lp']
+        if printer_name:
+            cmd.extend(['-d', printer_name])
+        if copies and int(copies) > 1:
+            cmd.extend(['-n', str(int(copies))])
+        cmd.append(tmp_path)
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            raise Exception(f"CUPS print failed: {result.stderr.strip() or result.stdout.strip()}")
+
+        job_id = (result.stdout or '').strip()
+        return job_id
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
 def process_odt_template(booking_id, teacher, class_name, value, payment_type):
     """Process ODT template by replacing placeholders and QR code"""
     # Get current date and time
@@ -123,7 +148,7 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
             content = content.replace('<form:checkbox form:name="Bar"', '<form:checkbox form:name="Bar" form:current-state="checked"')
         elif payment_type.lower() == 'twint':
             content = content.replace('<form:checkbox form:name="Twint"', '<form:checkbox form:name="Twint" form:current-state="checked"')
-        elif payment_type.lower() == 'einzahlungsschein':
+        elif payment_type.lower() == 'EZS':
             content = content.replace('<form:checkbox form:name="Einzahlungsschein"', '<form:checkbox form:name="Einzahlungsschein" form:current-state="checked"')
         
         # Write updated content.xml
@@ -154,8 +179,10 @@ receipt_request_model = api.model('ReceiptRequest', {
     'booking_id': fields.Integer(required=True, description='Reference/additional information'),
     'teacher': fields.String(required=True, description='Teacher name'),
     'class': fields.String(required=True, description='Class name'),
-    'payment_type': fields.String(required=True, description='Payment type (bar, Twint, Einzahlungsschein)'),
-    'output_type': fields.String(required=True, description='Output type: svg, odt, pdf')
+    'payment_type': fields.String(required=True, description='Payment type (bar, Twint, EZS)'),
+    'output_type': fields.String(required=True, description='Output type: svg, odt, pdf, print'),
+    'printer_name': fields.String(required=False, description='CUPS printer/queue name (optional; falls back to CUPS default)'),
+    'copies': fields.Integer(required=False, description='Number of copies (optional)')
 })
 
 @app.route('/health')
@@ -179,6 +206,8 @@ class GenerateReceipt(Resource):
             class_name = data.get('class')
             payment_type = data.get('payment_type')
             output_type = data.get('output_type')
+            printer_name = data.get('printer_name')
+            copies = data.get('copies', 1)
             
             if output_type == 'svg':
                 # Generate QR Bill as SVG
@@ -236,9 +265,15 @@ class GenerateReceipt(Resource):
                     as_attachment=False,
                     download_name='receipt.pdf'
                 )
+
+            elif output_type == 'print':
+                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+                pdf_buffer = convert_odt_to_pdf(odt_buffer)
+                job_id = print_pdf_via_cups(pdf_buffer, printer_name=printer_name, copies=copies)
+                return jsonify({'status': 'printed', 'job_id': job_id, 'printer': printer_name})
                 
             else:
-                api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf")
+                api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf, print")
             
         except Exception as e:
             api.abort(500, str(e))
