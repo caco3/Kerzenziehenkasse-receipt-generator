@@ -52,17 +52,15 @@ def convert_odt_to_pdf(odt_buffer):
         except Exception as e:
             raise Exception(f"Error converting ODT to PDF: {str(e)}")
 
-def print_pdf_via_cups(pdf_buffer, printer_name=None, copies=1):
+def print_pdf_via_cups(pdf_buffer, cups_queue_name=None):
     with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
         tmp.write(pdf_buffer.getvalue())
         tmp_path = tmp.name
 
     try:
         cmd = ['lp']
-        if printer_name:
-            cmd.extend(['-d', printer_name])
-        if copies and int(copies) > 1:
-            cmd.extend(['-n', str(int(copies))])
+        if cups_queue_name:
+            cmd.extend(['-d', cups_queue_name])
         cmd.append(tmp_path)
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -169,26 +167,20 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         return odt_buffer
 
 app = Flask(__name__)
-api = Api(app, version='1.0', title='QR Bill Generator API',
-          description='API for generating Swiss QR bills with predefined account information',
-          doc='/', default='api', default_label='QR Bill API')
+api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
+          description='Tool to generate the receipt and directly print it',
+          doc='/', default='api', default_label='Receipt Generator API')
 
 # Model for receipt generation request
 receipt_request_model = api.model('ReceiptRequest', {
     'value': fields.Float(required=True, description='Payment amount'),
-    'booking_id': fields.Integer(required=True, description='Reference/additional information'),
+    'booking_id': fields.Integer(required=True, description='Booking ID'),
     'teacher': fields.String(required=True, description='Teacher name'),
     'class': fields.String(required=True, description='Class name'),
     'payment_type': fields.String(required=True, description='Payment type (bar, Twint, EZS)'),
     'output_type': fields.String(required=True, description='Output type: svg, odt, pdf, print'),
-    'printer_name': fields.String(required=False, description='CUPS printer/queue name (optional; falls back to CUPS default)'),
-    'copies': fields.Integer(required=False, description='Number of copies (optional)')
+    'cups_queue_name': fields.String(required=False, description='CUPS printer/queue name (optional, only needed for printing; falls back to CUPS default)')
 })
-
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    return {'status': 'healthy'}
 
 @api.route('/api/generate-receipt')
 class GenerateReceipt(Resource):
@@ -206,8 +198,7 @@ class GenerateReceipt(Resource):
             class_name = data.get('class')
             payment_type = data.get('payment_type')
             output_type = data.get('output_type')
-            printer_name = data.get('printer_name')
-            copies = data.get('copies', 1)
+            cups_queue_name = data.get('cups_queue_name')
             
             if output_type == 'svg':
                 # Generate QR Bill as SVG
@@ -269,8 +260,8 @@ class GenerateReceipt(Resource):
             elif output_type == 'print':
                 odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
                 pdf_buffer = convert_odt_to_pdf(odt_buffer)
-                job_id = print_pdf_via_cups(pdf_buffer, printer_name=printer_name, copies=copies)
-                return jsonify({'status': 'printed', 'job_id': job_id, 'printer': printer_name})
+                job_id = print_pdf_via_cups(pdf_buffer, cups_queue_name=cups_queue_name)
+                return jsonify({'status': 'printed', 'job_id': job_id, 'printer': cups_queue_name})
                 
             else:
                 api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf, print")
