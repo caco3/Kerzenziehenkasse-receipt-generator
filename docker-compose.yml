@@ -1,0 +1,11 @@
+services:
+  webserver:
+    build: .
+    ports:
+      - "5000:5000"
+    container_name: python-webserver
+    restart: unless-stopped
+    volumes:
+      - ./app:/app
+      - ./templates:/templates
+      - /run/cups/cups.sock:/run/cups/cups.sock
