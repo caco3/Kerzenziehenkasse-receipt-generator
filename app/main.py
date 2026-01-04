@@ -290,26 +290,31 @@ def printer_status():
         lines = result.stdout.strip().split('\n')
         
         for line in lines:
-            if 'Gerät für' in line:
-                # Parse printer info: "Gerät für printer_name: device_uri"
-                parts = line.split('Gerät für ')[1].split(': ', 1)
+            if 'device for' in line or 'Gerät für' in line:
+                # Parse printer info: "device for printer_name: device_uri" or "Gerät für printer_name: device_uri"
+                if 'device for' in line:
+                    parts = line.split('device for ')[1].split(': ', 1)
+                else:
+                    parts = line.split('Gerät für ')[1].split(': ', 1)
                 if len(parts) >= 2:
                     printer_name = parts[0]
                     device_uri = parts[1]
                     
                     # Check if printer is accepting jobs and get description
                     try:
-                        status_result = subprocess.run(['lpstat', '-p', printer_name], capture_output=True, text=True)
+                        status_result = subprocess.run(['lpstat', '-l', '-p', printer_name], capture_output=True, text=True)
                         is_enabled = 'enabled' in status_result.stdout.lower()
                         status = 'enabled' if is_enabled else 'disabled'
                         
-                        # Extract printer description
+                        # Extract printer description using lpstat
                         description = ''
                         for line in status_result.stdout.split('\n'):
                             if 'description:' in line.lower():
-                                description = line.split('description:')[1].strip()
+                                desc_pos = line.lower().find('description:')
+                                if desc_pos != -1:
+                                    description = line[desc_pos + 12:].strip()
                                 break
-                    except:
+                    except Exception as e:
                         status = 'unknown'
                         description = ''
                     
