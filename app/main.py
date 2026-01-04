@@ -233,7 +233,7 @@ class GenerateReceipt(Resource):
                     svg_bytes,
                     mimetype='image/svg+xml',
                     as_attachment=False,
-                    download_name='receipt.svg'
+                    download_name=f'receipt-{booking_id}.svg'
                 )
                 
             elif output_type == 'odt':
@@ -243,7 +243,7 @@ class GenerateReceipt(Resource):
                     odt_buffer,
                     mimetype='application/vnd.oasis.opendocument.text',
                     as_attachment=False,
-                    download_name='receipt.odt'
+                    download_name=f'receipt-{booking_id}.odt'
                 )
                 
             elif output_type == 'pdf':
@@ -254,7 +254,7 @@ class GenerateReceipt(Resource):
                     pdf_buffer,
                     mimetype='application/pdf',
                     as_attachment=False,
-                    download_name='receipt.pdf'
+                    download_name=f'receipt-{booking_id}.pdf'
                 )
 
             elif output_type == 'print':
