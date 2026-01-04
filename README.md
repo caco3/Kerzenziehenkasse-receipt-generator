@@ -77,17 +77,15 @@ curl -X POST 'http://localhost:5000/api/generate-receipt' \
     "teacher": "Frau Meier",
     "class": "Oberstufe Usterwest 3A",
     "payment_type": "EZS",
-    "output_type": "print"
+    "output_type": "print",
+    "cups_queue_name": "<printer_queue_name>"
   }'
 ```
 
-This will use the default printer configured in the host system.
-
-To select another printer, its CUPS queue name must be specified:
-`cups_queue_name="<printer_queue_name>"`.
-
-To get the CUPS queue name of a printer, run:
-`lpstat -v | grep usb | awk -F ' ' '{print $3}' | sed "s/://"` # The label after "Gerät für" is the queue name.
+`<printer_queue_name>` represents the CUPS queue name.
+To get a list of all available printer queues, run:
+`lpstat -v`. 
+The label after "Gerät für" is the queue name.
 
 ## Access
 
