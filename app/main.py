@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS, cross_origin
 import io
 import zipfile
 import tempfile
@@ -167,9 +168,113 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         return odt_buffer
 
 app = Flask(__name__)
+
+# Configure CORS with explicit settings
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+     supports_credentials=True)
+
+# Add explicit OPTIONS handler
+@app.before_request
+def before_request():
+    if request.method == 'OPTIONS':
+        return '', 200
+
 api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
           description='Tool to generate the receipt and directly print it',
           doc='/', default='api', default_label='Receipt Generator API')
+
+# Simple Flask route for receipt generation (bypassing flask-restx CORS issues)
+@app.route('/api/generate-receipt', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def generate_receipt_flask():
+    """Generate receipt based on output type - Flask route version"""
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    try:
+        data = request.get_json()
+        
+        # Get all fields from request
+        value = data.get('value')
+        booking_id = data.get('booking_id')
+        teacher = data.get('teacher')
+        class_name = data.get('class')
+        payment_type = data.get('payment_type')
+        output_type = data.get('output_type')
+        cups_queue_name = data.get('cups_queue_name')
+        
+        if output_type == 'svg':
+            # Generate QR Bill as SVG
+            additional_info = "Kerzenziehen " + str(booking_id)
+            
+            bill = QRBill(
+                account=iban,
+                creditor={
+                    'name': name,
+                    'street': street,
+                    'pcode': str(postal_code),
+                    'city': city,
+                    'country': 'CH'
+                },
+                amount=str(value),
+                currency='CHF',
+                additional_information=additional_info,
+                language='de'
+            )
+            
+            svg_buffer = io.StringIO()
+            bill.as_svg(svg_buffer)
+            svg_data = svg_buffer.getvalue()
+            svg_buffer.close()
+            
+            svg_bytes = io.BytesIO(svg_data.encode('utf-8'))
+            svg_bytes.seek(0)
+            return send_file(
+                svg_bytes,
+                mimetype='image/svg+xml',
+                as_attachment=False,
+                download_name=f'receipt-{booking_id}.svg'
+            )
+            
+        elif output_type == 'odt':
+            odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+            return send_file(
+                odt_buffer,
+                mimetype='application/vnd.oasis.opendocument.text',
+                as_attachment=False,
+                download_name=f'receipt-{booking_id}.odt'
+            )
+            
+        elif output_type == 'pdf':
+            odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+            pdf_buffer = convert_odt_to_pdf(odt_buffer)
+            return send_file(
+                pdf_buffer,
+                mimetype='application/pdf',
+                as_attachment=False,
+                download_name=f'receipt-{booking_id}.pdf'
+            )
+
+        elif output_type == 'print':
+            odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
+            pdf_buffer = convert_odt_to_pdf(odt_buffer)
+            job_id = print_pdf_via_cups(pdf_buffer, cups_queue_name=cups_queue_name)
+            return jsonify({'status': 'printed', 'job_id': job_id, 'printer': cups_queue_name})
+            
+        else:
+            return jsonify({'error': f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf, print"}), 400
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Simple test endpoint for CORS
+@app.route('/test-cors', methods=['GET', 'POST', 'OPTIONS'])
+@cross_origin()
+def test_cors():
+    return jsonify({'message': 'CORS is working!', 'status': 'success'})
 
 # Model for receipt generation request
 receipt_request_model = api.model('ReceiptRequest', {
@@ -186,6 +291,7 @@ receipt_request_model = api.model('ReceiptRequest', {
 class GenerateReceipt(Resource):
     @api.doc('generate_receipt')
     @api.expect(receipt_request_model)
+    @cross_origin()
     def post(self):
         """Generate receipt based on output type"""
         try:
