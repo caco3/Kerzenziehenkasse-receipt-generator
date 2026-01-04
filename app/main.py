@@ -146,7 +146,7 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
             content = content.replace('<form:checkbox form:name="Bar"', '<form:checkbox form:name="Bar" form:current-state="checked"')
         elif payment_type.lower() == 'twint':
             content = content.replace('<form:checkbox form:name="Twint"', '<form:checkbox form:name="Twint" form:current-state="checked"')
-        elif payment_type.lower() == 'EZS':
+        elif payment_type.lower() == 'ezs':
             content = content.replace('<form:checkbox form:name="Einzahlungsschein"', '<form:checkbox form:name="Einzahlungsschein" form:current-state="checked"')
         
         # Write updated content.xml
