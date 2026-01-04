@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request, send_file
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 import io
 import zipfile
 import tempfile
@@ -168,19 +168,7 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         return odt_buffer
 
 app = Flask(__name__)
-
-# Configure CORS with explicit settings
-CORS(app, 
-     resources={r"/*": {"origins": "*"}},
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
-     supports_credentials=True)
-
-# Add explicit OPTIONS handler
-@app.before_request
-def before_request():
-    if request.method == 'OPTIONS':
-        return '', 200
+CORS(app)  # Enable CORS for all routes
 
 api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
           description='Tool to generate the receipt and directly print it',
@@ -188,7 +176,6 @@ api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
 
 # Simple Flask route for receipt generation (bypassing flask-restx CORS issues)
 @app.route('/api/generate-receipt', methods=['POST', 'OPTIONS'])
-@cross_origin()
 def generate_receipt_flask():
     """Generate receipt based on output type - Flask route version"""
     if request.method == 'OPTIONS':
@@ -270,12 +257,6 @@ def generate_receipt_flask():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Simple test endpoint for CORS
-@app.route('/test-cors', methods=['GET', 'POST', 'OPTIONS'])
-@cross_origin()
-def test_cors():
-    return jsonify({'message': 'CORS is working!', 'status': 'success'})
-
 # Model for receipt generation request
 receipt_request_model = api.model('ReceiptRequest', {
     'value': fields.Float(required=True, description='Payment amount'),
@@ -291,7 +272,6 @@ receipt_request_model = api.model('ReceiptRequest', {
 class GenerateReceipt(Resource):
     @api.doc('generate_receipt')
     @api.expect(receipt_request_model)
-    @cross_origin()
     def post(self):
         """Generate receipt based on output type"""
         try:
