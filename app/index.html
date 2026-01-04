@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Generator API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .endpoint {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .method {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .post { background: #28a745; }
+        .get { background: #007bff; }
+        code {
+            background: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        h1, h2 { color: #333; }
+        h3 { color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Receipt Generator API</h1>
+    <p>Ein Flask-Service zur Erstellung von Belegen mit QR-Rechnungen und Druckfunktionalität.</p>
+    
+    <div class="endpoint">
+        <h2><span class="method post">POST</span> /api/generate-receipt</h2>
+        <p>Erstellt einen Beleg in verschiedenen Formaten (SVG, ODT, PDF oder direkter Druck).</p>
+        
+        <h3>Request Body (JSON):</h3>
+        <pre><code>{
+  "value": 56.70,
+  "booking_id": 1234,
+  "teacher": "Frau Meier",
+  "class": "Oberstufe Usterwest 3A",
+  "payment_type": "bar|Twint|EZS",
+  "output_type": "svg|odt|pdf|print",
+  "cups_queue_name": "printer_queue_name"  // Optional, nur für Druck
+}</code></pre>
+        
+        <h3>Response:</h3>
+        <ul>
+            <li><strong>SVG:</strong> Gibt SVG-Datei zurück</li>
+            <li><strong>ODT:</strong> Gibt ODT-Datei zurück</li>
+            <li><strong>PDF:</strong> Gibt PDF-Datei zurück</li>
+            <li><strong>Print:</strong> Gibt JSON mit Druckstatus zurück:
+                <pre><code>{
+  "status": "printed",
+  "job_id": "12345",
+  "printer": "printer_queue_name"
+}</code></pre>
+            </li>
+        </ul>
+        
+        <h3>Beispiele:</h3>
+        <p><strong>PDF erstellen:</strong></p>
+        <pre><code>curl -X POST 'http://localhost:5000/api/generate-receipt' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "value": 56.70,
+    "booking_id": 1234,
+    "teacher": "Frau Meier",
+    "class": "Oberstufe Usterwest 3A",
+    "payment_type": "bar",
+    "output_type": "pdf"
+  }' --output my-receipt.pdf</code></pre>
+        
+        <p><strong>Beleg drucken:</strong></p>
+        <pre><code>curl -X POST 'http://localhost:5000/api/generate-receipt' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "value": 56.70,
+    "booking_id": 1234,
+    "teacher": "Frau Meier",
+    "class": "Oberstufe Usterwest 3A",
+    "payment_type": "EZS",
+    "output_type": "print",
+    "cups_queue_name": "printer_queue_name"
+  }'</code></pre>
+    </div>
+    
+    <div class="endpoint">
+        <h2><span class="method get">GET</span> /api/printer-status</h2>
+        <p>Zeigt Status und Informationen über alle verfügbaren Drucker an.</p>
+        
+        <h3>Response:</h3>
+        <pre><code>{
+  "printers": [
+    {
+      "name": "printer_queue_name",
+      "device_uri": "hp:/usb/HP_LaserJet_Professional_P_1102w?serial=...",
+      "status": "enabled|disabled|unknown",
+      "ip_address": "192.168.1.100",  // null für lokale Drucker
+      "type": "network|local",
+      "description": "HP LaserJet Professional P 1102w"
+    }
+  ],
+  "total_count": 1
+}</code></pre>
+        
+        <h3>Beispiel:</h3>
+        <pre><code>curl -X GET 'http://localhost:5000/api/printer-status'</code></pre>
+    </div>
+    
+    <h2>Zahlungsarten</h2>
+    <ul>
+        <li><strong>bar:</strong> Barzahlung</li>
+        <li><strong>Twint:</strong> Twint-Zahlung</li>
+        <li><strong>EZS:</strong> Einzahlungsschein (QR-Rechnung)</li>
+    </ul>
+    
+    <h2>Ausgabeformate</h2>
+    <ul>
+        <li><strong>svg:</strong> QR-Rechnung als SVG-Bild</li>
+        <li><strong>odt:</strong> OpenDocument Text Vorlage</li>
+        <li><strong>pdf:</strong> PDF-Dokument</li>
+        <li><strong>print:</strong> Direkt an Drucker senden</li>
+    </ul>
+    
+    <h2>Drucker-Konfiguration</h2>
+    <p>Um eine Liste der verfügbaren Drucker-Queues zu erhalten:</p>
+    <pre><code>lpstat -v</code></pre>
+    <p>Der Bezeichner nach "Gerät für" ist der Queue-Name für <code>cups_queue_name</code>.</p>
+</body>
+</html>

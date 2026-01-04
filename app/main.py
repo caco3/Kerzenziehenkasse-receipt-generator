@@ -7,7 +7,6 @@ import os
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import subprocess
-from flask_restx import Api, Resource, fields
 from qrbill import QRBill
 
 # Account data
@@ -170,9 +169,27 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
-          description='Tool to generate the receipt and directly print it',
-          doc='/', default='api', default_label='Receipt Generator API')
+@app.route('/')
+def index():
+    """Simple API documentation page"""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), 'index.html'), 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return '''
+<!DOCTYPE html>
+<html>
+<head><title>Receipt Generator API</title></head>
+<body>
+    <h1>Receipt Generator API</h1>
+    <p>Documentation file not found. Please check the API endpoints:</p>
+    <ul>
+        <li><strong>POST</strong> /api/generate-receipt - Generate receipts</li>
+        <li><strong>GET</strong> /api/printer-status - Check printer status</li>
+    </ul>
+</body>
+</html>
+        '''
 
 # Simple Flask route for receipt generation (bypassing flask-restx CORS issues)
 @app.route('/api/generate-receipt', methods=['POST', 'OPTIONS'])
@@ -257,103 +274,69 @@ def generate_receipt_flask():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Model for receipt generation request
-receipt_request_model = api.model('ReceiptRequest', {
-    'value': fields.Float(required=True, description='Payment amount'),
-    'booking_id': fields.Integer(required=True, description='Booking ID'),
-    'teacher': fields.String(required=True, description='Teacher name'),
-    'class': fields.String(required=True, description='Class name'),
-    'payment_type': fields.String(required=True, description='Payment type (bar, Twint, EZS)'),
-    'output_type': fields.String(required=True, description='Output type: svg, odt, pdf, print'),
-    'cups_queue_name': fields.String(required=False, description='CUPS printer/queue name (optional, only needed for printing; falls back to CUPS default)')
-})
-
-@api.route('/api/generate-receipt')
-class GenerateReceipt(Resource):
-    @api.doc('generate_receipt')
-    @api.expect(receipt_request_model)
-    def post(self):
-        """Generate receipt based on output type"""
-        try:
-            data = request.get_json()
-            
-            # Get all fields from request
-            value = data.get('value')
-            booking_id = data.get('booking_id')
-            teacher = data.get('teacher')
-            class_name = data.get('class')
-            payment_type = data.get('payment_type')
-            output_type = data.get('output_type')
-            cups_queue_name = data.get('cups_queue_name')
-            
-            if output_type == 'svg':
-                # Generate QR Bill as SVG
-                additional_info = "Kerzenziehen " + str(booking_id)
-                
-                # Create QR bill with predefined account info
-                bill = QRBill(
-                    account=iban,
-                    creditor={
-                        'name': name,
-                        'street': street,
-                        'pcode': str(postal_code),
-                        'city': city,
-                        'country': 'CH'
-                    },
-                    amount=str(value),
-                    currency='CHF',
-                    additional_information=additional_info,
-                    language='de'
-                )
-                
-                # Generate SVG
-                svg_buffer = io.StringIO()
-                bill.as_svg(svg_buffer)
-                svg_data = svg_buffer.getvalue()
-                svg_buffer.close()
-                
-                # Return as SVG file
-                svg_bytes = io.BytesIO(svg_data.encode('utf-8'))
-                svg_bytes.seek(0)
-                return send_file(
-                    svg_bytes,
-                    mimetype='image/svg+xml',
-                    as_attachment=False,
-                    download_name=f'receipt-{booking_id}.svg'
-                )
-                
-            elif output_type == 'odt':
-                # Generate ODT receipt
-                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
-                return send_file(
-                    odt_buffer,
-                    mimetype='application/vnd.oasis.opendocument.text',
-                    as_attachment=False,
-                    download_name=f'receipt-{booking_id}.odt'
-                )
-                
-            elif output_type == 'pdf':
-                # Generate PDF receipt by converting ODT
-                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
-                pdf_buffer = convert_odt_to_pdf(odt_buffer)
-                return send_file(
-                    pdf_buffer,
-                    mimetype='application/pdf',
-                    as_attachment=False,
-                    download_name=f'receipt-{booking_id}.pdf'
-                )
-
-            elif output_type == 'print':
-                odt_buffer = process_odt_template(booking_id, teacher, class_name, value, payment_type)
-                pdf_buffer = convert_odt_to_pdf(odt_buffer)
-                job_id = print_pdf_via_cups(pdf_buffer, cups_queue_name=cups_queue_name)
-                return jsonify({'status': 'printed', 'job_id': job_id, 'printer': cups_queue_name})
-                
-            else:
-                api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf, print")
-            
-        except Exception as e:
-            api.abort(500, str(e))
+# Printer status check endpoint
+@app.route('/api/printer-status', methods=['GET'])
+def printer_status():
+    """Check status of available printers"""
+    try:
+        import subprocess
+        
+        # Get all printer information
+        result = subprocess.run(['lpstat', '-v'], capture_output=True, text=True)
+        if result.returncode != 0:
+            return jsonify({'error': 'Failed to get printer information'}), 500
+        
+        printers = []
+        lines = result.stdout.strip().split('\n')
+        
+        for line in lines:
+            if 'Gerät für' in line:
+                # Parse printer info: "Gerät für printer_name: device_uri"
+                parts = line.split('Gerät für ')[1].split(': ', 1)
+                if len(parts) >= 2:
+                    printer_name = parts[0]
+                    device_uri = parts[1]
+                    
+                    # Check if printer is accepting jobs and get description
+                    try:
+                        status_result = subprocess.run(['lpstat', '-p', printer_name], capture_output=True, text=True)
+                        is_enabled = 'enabled' in status_result.stdout.lower()
+                        status = 'enabled' if is_enabled else 'disabled'
+                        
+                        # Extract printer description
+                        description = ''
+                        for line in status_result.stdout.split('\n'):
+                            if 'description:' in line.lower():
+                                description = line.split('description:')[1].strip()
+                                break
+                    except:
+                        status = 'unknown'
+                        description = ''
+                    
+                    # Extract IP from device URI if it's a network printer
+                    ip_address = None
+                    if 'ipp://' in device_uri:
+                        ip_address = device_uri.split('ipp://')[1].split('/')[0]
+                    elif 'dnssd://' in device_uri:
+                        # For DNS-SD printers, we can't easily get IP without additional resolution
+                        ip_address = None
+                    
+                    printers.append({
+                        'name': printer_name,
+                        'device_uri': device_uri,
+                        'status': status,
+                        'ip_address': ip_address,
+                        'type': 'network' if ip_address else 'local',
+                        'description': description
+                    })
+        
+        return jsonify({
+            'printers': printers,
+            'total_count': len(printers)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

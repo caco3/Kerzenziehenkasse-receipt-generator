@@ -44,30 +44,38 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 - `payment_type` (required) - Payment type: "bar", "Twint", or "EZS" (string)
 - `output_type` (required) - Output type: "svg", "odt", "pdf" or "print" (string)
 
-**Output Types:**
-- `svg` - Generate QR Bill as SVG image
-- `odt` - Generate receipt as ODT document with QR bill and filled placeholders
-- `pdf` - Generate receipt as PDF document with QR bill and filled placeholders
-- `print` - Generate receipt as PDF document with QR bill and filled placeholders and print it
-
-**Example requests to generate the QR bill (svg), the receipt document (odt) or the PDF out of it (pdf):**
-```bash
-OUTPUT_TYPE="pdf"
-#OUTPUT_TYPE="odt"
-#OUTPUT_TYPE="svg"
-
-curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d "{
-  \"value\": 56.70,
-  \"booking_id\": 1234,
-  \"teacher\": \"Frau Meier\",
-  \"class\": \"Oberstufe Usterwest 3A\",
-  \"payment_type\": \"bar\",
-  \"output_type\": \"$OUTPUT_TYPE\",
-  \"cups_queue_name\": \"$PRINTER_QUEUE_NAME\"
-}" --output my-receipt.$OUTPUT_TYPE
 ```
 
-**Example request to generate and print it (print):**
+#### Response:
+- **SVG**: Returns SVG file
+- **ODT**: Returns ODT file
+- **PDF**: Returns PDF file
+- **Print**: Returns JSON with print job status:
+```json
+{
+  "status": "printed",
+  "job_id": "12345",
+  "printer": "printer_queue_name"
+}
+```
+
+#### Examples:
+
+**Generate PDF:**
+```bash
+curl -X POST 'http://localhost:5000/api/generate-receipt' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "value": 56.70,
+    "booking_id": 1234,
+    "teacher": "Frau Meier",
+    "class": "Oberstufe Usterwest 3A",
+    "payment_type": "bar",
+    "output_type": "pdf"
+  }' --output my-receipt.pdf
+```
+
+**Print Receipt:**
 ```bash
 curl -X POST 'http://localhost:5000/api/generate-receipt' \
   -H 'Content-Type: application/json' \
@@ -78,14 +86,59 @@ curl -X POST 'http://localhost:5000/api/generate-receipt' \
     "class": "Oberstufe Usterwest 3A",
     "payment_type": "EZS",
     "output_type": "print",
-    "cups_queue_name": "<printer_queue_name>"
+    "cups_queue_name": "printer_queue_name"
   }'
 ```
 
-`<printer_queue_name>` represents the CUPS queue name.
-To get a list of all available printer queues, run:
-`lpstat -v`. 
-The label after "Gerät für" is the queue name.
+### 2. Check Printer Status
+
+**GET** `/api/printer-status`
+
+Get status and information about all available printers.
+
+#### Response:
+```json
+{
+  "printers": [
+    {
+      "name": "printer_queue_name",
+      "device_uri": "hp:/usb/HP_LaserJet_Professional_P_1102w?serial=...",
+      "status": "enabled|disabled|unknown",
+      "ip_address": "192.168.1.100",  // null for local printers
+      "type": "network|local",
+      "description": "HP LaserJet Professional P 1102w"
+    }
+  ],
+  "total_count": 1
+}
+```
+
+#### Example:
+```bash
+curl -X GET 'http://localhost:5000/api/printer-status'
+```
+
+## Payment Types
+
+- **bar**: Cash payment
+- **Twint**: Twint payment
+- **EZS**: Einzahlungsschein (QR bill)
+
+## Output Types
+
+- **svg**: QR bill as SVG image
+- **odt**: OpenDocument Text template
+- **pdf**: PDF document
+- **print**: Send directly to printer
+
+## Printer Configuration
+
+To get a list of available printer queues:
+```bash
+lpstat -v
+```
+
+The label after "Gerät für" is the queue name to use for `cups_queue_name`.
 
 ## Access
 
