@@ -30,7 +30,7 @@ docker compose up --build
 
 ### API Documentation
 
-Interactive Swagger documentation is available at `http://localhost:5000/`
+Interactive Swagger documentation is available at `http://localhost:8087/`
 
 ### Receipt Generation
 
@@ -52,24 +52,21 @@ Send a POST request to `/api/generate-receipt` with JSON data:
 
 **Example requests to generate the QR bill (svg), the receipt document (odt) or the PDF out of it (pdf):**
 ```bash
-OUTPUT_TYPE="pdf"
-#OUTPUT_TYPE="odt"
-#OUTPUT_TYPE="svg"
-
-curl -X 'POST' 'http://localhost:5000/api/generate-receipt' -H 'accept: application/json' -H 'Content-Type: application/json' -d "{
-  \"value\": 56.70,
-  \"booking_id\": 1234,
-  \"teacher\": \"Frau Meier\",
-  \"class\": \"Oberstufe Usterwest 3A\",
-  \"payment_type\": \"bar\",
-  \"output_type\": \"$OUTPUT_TYPE\",
-  \"cups_queue_name\": \"$PRINTER_QUEUE_NAME\"
-}" --output my-receipt.$OUTPUT_TYPE
+curl -X POST 'http://localhost:8087/api/generate-receipt' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "value": 56.70,
+    "booking_id": 1234,
+    "teacher": "Frau Meier",
+    "class": "Oberstufe Usterwest 3A",
+    "payment_type": "bar",
+    "output_type": "pdf"
+  }' --output my-receipt.pdf
 ```
 
 **Example request to generate and print it (print):**
 ```bash
-curl -X POST 'http://localhost:5000/api/generate-receipt' \
+curl -X POST 'http://localhost:8087/api/generate-receipt' \
   -H 'Content-Type: application/json' \
   -d '{
     "value": 56.70,
@@ -86,12 +83,55 @@ This will use the default printer configured in the host system.
 To select another printer, its CUPS queue name must be specified:
 `cups_queue_name="<printer_queue_name>"`.
 
-To get the CUPS queue name of a printer, run:
-`lpstat -v | grep usb | awk -F ' ' '{print $3}' | sed "s/://"` # The label after "Gerät für" is the queue name.
+Get status and information about all available printers.
+
+#### Response:
+```json
+{
+  "printers": [
+    {
+      "name": "printer_queue_name",
+      "device_uri": "hp:/usb/HP_LaserJet_Professional_P_1102w?serial=...",
+      "status": "enabled|disabled|unknown",
+      "ip_address": "192.168.1.100",  // null for local printers
+      "type": "network|local",
+      "description": "HP LaserJet Professional P 1102w"
+    }
+  ],
+  "total_count": 1
+}
+```
+
+#### Example:
+```bash
+curl -X GET 'http://localhost:8087/api/printer-status'
+```
+
+## Payment Types
+
+- **bar**: Cash payment
+- **Twint**: Twint payment
+- **EZS**: Einzahlungsschein (QR bill)
+
+## Output Types
+
+- **svg**: QR bill as SVG image
+- **odt**: OpenDocument Text template
+- **pdf**: PDF document
+- **print**: Send directly to printer
+
+## Printer Configuration
+
+To get a list of available printer queues:
+```bash
+lpstat -v
+```
+
+The label after "Gerät für" is the queue name to use for `cups_queue_name`.
 
 ## Access
 
-The service is available at `http://localhost:5000`
+The service is available at `http://localhost:8087`
 
 ## Stop
 
