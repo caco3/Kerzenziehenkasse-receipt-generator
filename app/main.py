@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request, send_file
 import io
+import re
 import zipfile
 import tempfile
 import os
@@ -114,18 +115,28 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         with zipfile.ZipFile(odt_template_path, 'r') as template_zip:
             template_zip.extractall(temp_dir)
         
-        # Replace SVG file in Pictures folder
-        pictures_dir = os.path.join(temp_dir, 'Pictures')
-        svg_files = [f for f in os.listdir(pictures_dir) if f.endswith('.svg')]
-        if svg_files:
-            svg_path = os.path.join(pictures_dir, svg_files[0])
-            with open(svg_path, 'w', encoding='utf-8') as f:
-                f.write(svg_data)
-        
-        # Replace placeholders in content.xml
+        # Replace the picture embedded by the template's 'qr-bill' frame
+        # with the generated slip. LibreOffice renames embedded pictures on
+        # every save, so resolve the image path from the frame's xlink:href.
         content_xml_path = os.path.join(temp_dir, 'content.xml')
         with open(content_xml_path, 'r', encoding='utf-8') as f:
             content = f.read()
+
+        frame_match = re.search(
+            r'<draw:frame\b[^>]*draw:name="qr-bill"[^>]*>(.*?)</draw:frame>',
+            content, re.S)
+        if not frame_match:
+            raise Exception("qr-bill frame not found in template")
+        hrefs = re.findall(r'xlink:href="([^"]+)"', frame_match.group(1))
+        image_href = next((h for h in hrefs if h.lower().endswith('.svg')),
+                          hrefs[0] if hrefs else None)
+        if not image_href:
+            raise Exception("qr-bill frame contains no image")
+        image_path = os.path.normpath(os.path.join(temp_dir, image_href))
+        with open(image_path, 'w', encoding='utf-8') as f:
+            f.write(svg_data)
+
+        # Replace placeholders in content.xml
         
         # Replace all placeholders
         replacements = {
@@ -140,13 +151,27 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         
         for placeholder, replacement in replacements.items():
             content = content.replace(placeholder, replacement)
-        
+
+        # Fill named form text controls (LibreOffice may save the class/teacher
+        # inputs as form:text fields; their displayed value is form:current-value)
+        form_values = {
+            'Schulklasse': class_name,
+            'Leiter/In': teacher,
+        }
+        for field_name, field_value in form_values.items():
+            def fill_field(match, value=field_value):
+                tag = re.sub(r'\sform:(current-)?value="[^"]*"', '', match.group(0))
+                return tag.replace('>', ' form:current-value="{0}" form:value="{0}">'.format(value), 1)
+            content = re.sub(
+                r'<form:text\b[^>]*form:name="' + re.escape(field_name) + r'"[^>]*>',
+                fill_field, content, count=1)
+
         # Check the appropriate payment type checkbox
         if payment_type.lower() == 'bar':
             content = content.replace('<form:checkbox form:name="Bar"', '<form:checkbox form:name="Bar" form:current-state="checked"')
         elif payment_type.lower() == 'twint':
             content = content.replace('<form:checkbox form:name="Twint"', '<form:checkbox form:name="Twint" form:current-state="checked"')
-        elif payment_type.lower() == 'EZS':
+        elif payment_type.lower() == 'ezs':
             content = content.replace('<form:checkbox form:name="Einzahlungsschein"', '<form:checkbox form:name="Einzahlungsschein" form:current-state="checked"')
         
         # Write updated content.xml
@@ -170,6 +195,16 @@ app = Flask(__name__)
 api = Api(app, version='1.0', title='Receipt Generator for the Kerzenziehen',
           description='Tool to generate the receipt and directly print it',
           doc='/', default='api', default_label='Receipt Generator API')
+
+
+@app.after_request
+def add_cors_headers(response):
+    # The Kassen-Software page (port 80) calls this API cross-origin on :8087
+    # with a JSON body, so the browser requires CORS headers.
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
 
 # Model for receipt generation request
 receipt_request_model = api.model('ReceiptRequest', {
