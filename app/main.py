@@ -76,6 +76,50 @@ def print_pdf_via_cups(pdf_buffer, cups_queue_name=None):
         except OSError:
             pass
 
+def get_cups_printers():
+    """Query CUPS for configured printers via lpstat.
+
+    Returns a list of dicts with name, status, description, type and
+    ip_address - the shape the Kassen-Software printer dialog expects.
+    """
+    try:
+        p_result = subprocess.run(['lpstat', '-p'], capture_output=True, text=True, timeout=10)
+        v_result = subprocess.run(['lpstat', '-v'], capture_output=True, text=True, timeout=10)
+    except FileNotFoundError:
+        raise Exception("lpstat not available - CUPS client tools missing")
+    if p_result.returncode != 0:
+        raise Exception(f"lpstat failed: {p_result.stderr.strip()}")
+
+    # Map queue name -> device URI (usb://, hp:/usb/, ipp://, dnssd://, ...)
+    uris = {}
+    for line in v_result.stdout.splitlines():
+        m = re.match(r'device for (\S+):\s*(\S+)', line)
+        if m:
+            uris[m.group(1)] = m.group(2)
+
+    printers = []
+    for line in p_result.stdout.splitlines():
+        m = re.match(r'printer (\S+)', line)
+        if not m:
+            continue
+        name = m.group(1)
+        uri = uris.get(name, '')
+        if uri.startswith('usb:') or '/usb/' in uri:
+            ptype = 'usb'
+        elif re.match(r'(ipp|ipps|socket|lpd|dnssd|mdns|http|https)://', uri):
+            ptype = 'network'
+        else:
+            ptype = 'other'
+        ip_match = re.search(r'://([^/\s:]+)', uri)
+        printers.append({
+            'name': name,
+            'status': 'disabled' if 'disabled' in line else 'enabled',
+            'description': name,
+            'type': ptype,
+            'ip_address': ip_match.group(1) if ptype == 'network' and ip_match else ''
+        })
+    return printers
+
 def process_odt_template(booking_id, teacher, class_name, value, payment_type):
     """Process ODT template by replacing placeholders and QR code"""
     # Get current date and time
@@ -301,6 +345,16 @@ class GenerateReceipt(Resource):
             else:
                 api.abort(400, f"Invalid output_type: {output_type}. Must be one of: svg, odt, pdf, print")
             
+        except Exception as e:
+            api.abort(500, str(e))
+
+@api.route('/api/printer-status')
+class PrinterStatus(Resource):
+    @api.doc('printer_status')
+    def get(self):
+        """List CUPS printers for the printer selection dialog"""
+        try:
+            return jsonify({'printers': get_cups_printers()})
         except Exception as e:
             api.abort(500, str(e))
 
