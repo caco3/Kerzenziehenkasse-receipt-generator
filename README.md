@@ -12,10 +12,12 @@ It is able to generate the Swiss QR bill (svg file), Opendocument receipt (odt f
 ├── requirements.txt     # Python dependencies
 ├── Dockerfile           # Docker configuration
 ├── docker-compose.yml   # Container orchestration
-├── templates/
-│   └── receipt.odt      # Receipt template
 └── README.md            # This file
 ```
+
+The receipt template is **not** kept here — docker-compose mounts
+`Kassen-Software/src/templates/` into the container at `/templates`
+(single source of truth). Run it from the repo-root compose file.
 
 ## Quick Start
 
