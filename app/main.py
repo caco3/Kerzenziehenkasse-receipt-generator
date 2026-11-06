@@ -120,15 +120,8 @@ def get_cups_printers():
         })
     return printers
 
-def process_odt_template(booking_id, teacher, class_name, value, payment_type):
-    """Process ODT template by replacing placeholders and QR code"""
-    # Get current date and time
-    now = datetime.now()
-    current_year = now.year
-    current_time = now.strftime("%H:%M")
-    current_date = now.strftime("%d.%m.%Y")
-    
-    # Generate QR Bill SVG
+def generate_qr_bill_svg(booking_id, value):
+    """Generate the Swiss QR-bill SVG for an invoice payment"""
     additional_info = "Kerzenziehen " + str(booking_id)
     bill = QRBill(
         account=iban,
@@ -144,41 +137,52 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
         additional_information=additional_info,
         language='de'
     )
-    
-    # Generate SVG to string
     svg_buffer = io.StringIO()
     bill.as_svg(svg_buffer)
     svg_data = svg_buffer.getvalue()
     svg_buffer.close()
-    
+    return svg_data
+
+def process_odt_template(booking_id, teacher, class_name, value, payment_type):
+    """Process ODT template by replacing placeholders and QR code"""
+    # Get current date and time
+    now = datetime.now()
+    current_year = now.year
+    current_time = now.strftime("%H:%M")
+    current_date = now.strftime("%d.%m.%Y")
+
+    # bill.odt is the invoice template (only for EZS/Rechnung);
+    # receipt.odt covers cash (bar) and Twint payments.
+    is_invoice = payment_type.lower() == 'ezs'
+    odt_template_path = '/templates/bill.odt' if is_invoice else '/templates/receipt.odt'
+
     # Create temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
-        odt_template_path = '/templates/receipt.odt'
-        
         # Extract ODT template
         with zipfile.ZipFile(odt_template_path, 'r') as template_zip:
             template_zip.extractall(temp_dir)
-        
-        # Replace the picture embedded by the template's 'qr-bill' frame
-        # with the generated slip. LibreOffice renames embedded pictures on
-        # every save, so resolve the image path from the frame's xlink:href.
+
         content_xml_path = os.path.join(temp_dir, 'content.xml')
         with open(content_xml_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        frame_match = re.search(
-            r'<draw:frame\b[^>]*draw:name="qr-bill"[^>]*>(.*?)</draw:frame>',
-            content, re.S)
-        if not frame_match:
-            raise Exception("qr-bill frame not found in template")
-        hrefs = re.findall(r'xlink:href="([^"]+)"', frame_match.group(1))
-        image_href = next((h for h in hrefs if h.lower().endswith('.svg')),
-                          hrefs[0] if hrefs else None)
-        if not image_href:
-            raise Exception("qr-bill frame contains no image")
-        image_path = os.path.normpath(os.path.join(temp_dir, image_href))
-        with open(image_path, 'w', encoding='utf-8') as f:
-            f.write(svg_data)
+        if is_invoice:
+            # Replace the picture embedded by the template's 'qr-bill' frame
+            # with the generated slip. LibreOffice renames embedded pictures on
+            # every save, so resolve the image path from the frame's xlink:href.
+            frame_match = re.search(
+                r'<draw:frame\b[^>]*draw:name="qr-bill"[^>]*>(.*?)</draw:frame>',
+                content, re.S)
+            if not frame_match:
+                raise Exception("qr-bill frame not found in template")
+            hrefs = re.findall(r'xlink:href="([^"]+)"', frame_match.group(1))
+            image_href = next((h for h in hrefs if h.lower().endswith('.svg')),
+                              hrefs[0] if hrefs else None)
+            if not image_href:
+                raise Exception("qr-bill frame contains no image")
+            image_path = os.path.normpath(os.path.join(temp_dir, image_href))
+            with open(image_path, 'w', encoding='utf-8') as f:
+                f.write(generate_qr_bill_svg(booking_id, value))
 
         # Replace placeholders in content.xml
         
@@ -215,8 +219,6 @@ def process_odt_template(booking_id, teacher, class_name, value, payment_type):
             content = content.replace('<form:checkbox form:name="Bar"', '<form:checkbox form:name="Bar" form:current-state="checked"')
         elif payment_type.lower() == 'twint':
             content = content.replace('<form:checkbox form:name="Twint"', '<form:checkbox form:name="Twint" form:current-state="checked"')
-        elif payment_type.lower() == 'ezs':
-            content = content.replace('<form:checkbox form:name="Einzahlungsschein"', '<form:checkbox form:name="Einzahlungsschein" form:current-state="checked"')
         
         # Write updated content.xml
         with open(content_xml_path, 'w', encoding='utf-8') as f:
@@ -256,7 +258,7 @@ receipt_request_model = api.model('ReceiptRequest', {
     'booking_id': fields.Integer(required=True, description='Booking ID'),
     'teacher': fields.String(required=True, description='Teacher name'),
     'class': fields.String(required=True, description='Class name'),
-    'payment_type': fields.String(required=True, description='Payment type (bar, Twint, EZS)'),
+    'payment_type': fields.String(required=True, description='Payment type: bar or Twint use receipt.odt, EZS (Rechnung) uses bill.odt'),
     'output_type': fields.String(required=True, description='Output type: svg, odt, pdf, print'),
     'cups_queue_name': fields.String(required=False, description='CUPS printer/queue name (optional, only needed for printing; falls back to CUPS default)')
 })
@@ -280,30 +282,7 @@ class GenerateReceipt(Resource):
             cups_queue_name = data.get('cups_queue_name')
             
             if output_type == 'svg':
-                # Generate QR Bill as SVG
-                additional_info = "Kerzenziehen " + str(booking_id)
-                
-                # Create QR bill with predefined account info
-                bill = QRBill(
-                    account=iban,
-                    creditor={
-                        'name': name,
-                        'street': street,
-                        'pcode': str(postal_code),
-                        'city': city,
-                        'country': 'CH'
-                    },
-                    amount=str(value),
-                    currency='CHF',
-                    additional_information=additional_info,
-                    language='de'
-                )
-                
-                # Generate SVG
-                svg_buffer = io.StringIO()
-                bill.as_svg(svg_buffer)
-                svg_data = svg_buffer.getvalue()
-                svg_buffer.close()
+                svg_data = generate_qr_bill_svg(booking_id, value)
                 
                 # Return as SVG file
                 svg_bytes = io.BytesIO(svg_data.encode('utf-8'))
